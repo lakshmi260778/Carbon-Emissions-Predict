@@ -58,37 +58,14 @@ year = st.sidebar.number_input("Year", min_value=1900, max_value=2100, value=203
 
 st.sidebar.markdown("---")
 
-# Predict button in sidebar (prominent)
-#prediction_result = None
-#if st.sidebar.button("🚀 Predict CO₂ Emissions", type="primary", use_container_width=True):
-#    try:
-#        # Encode the user inputs using the same encoders from training
-#        country_encoded = le_country.transform([country])[0]
-#        region_encoded = le_region.transform([region])[0]
-
-        # Construct one-row DataFrame with encoded values
-#        X_user = pd.DataFrame([{
-#            "Country": country_encoded,
-#            "Region": region_encoded,
-#            "Year": year
-#        }])
-
-#        pred = model.predict(X_user)[0]
-#        prediction_result = pred
-#        st.sidebar.success(f"**Predicted: {pred:,.0f} kilotons**")
-#    except Exception as e:
-#        st.sidebar.error(f"Error: {e}")
 
 # Main page content
 st.title("CO₂ Emissions Predictor")
-#st.markdown("<medium>Predict kilotons of CO₂ emissions based on country, region, and year.</medium>", unsafe_allow_html=True)   
-#st.info("Use the sidebar on the left to select parameters and click 'Predict CO₂ Emissions'.")
-st.markdown("<medium>Be prudent. Act wisely. Protect our resources.</medium>", unsafe_allow_html=True)  
-st.info("This application helps you explore, predict, and visualize CO₂ emissions for different countries and regions, showing how emission levels evolve over time.")
+st.markdown("<medium>Be prudent. Act wise. Protect our resources.</medium>", unsafe_allow_html=True)  
+st.info("This application helps you explore, predict, and visualize CO₂ emissions for different countries over time.\n\n- Choose the input parameters in the sidebar and click 'Predict CO₂ Emissions' to see the result.")
  
 
 prediction_result = None
-#if st.button("🚀 Predict CO₂ Emissions", type="primary", use_container_width=True):
 if st.button("🚀 Predict CO₂ Emissions", type="primary"):
     try:
         # Encode the user inputs using the same encoders from training
@@ -121,6 +98,25 @@ if df is not None and country:
     # Prepare data for visualization
     df["Year"] = pd.to_datetime(df["Date"], format="%d-%m-%Y").dt.year
     
+    # Helper function to predict future values
+    def predict_future(c_name, r_name, years):
+        c_encoded = le_country.transform([c_name])[0]
+        r_encoded = le_region.transform([r_name])[0]
+        predictions = []
+        for y in years:
+            X_pred = pd.DataFrame([{
+                "Country": c_encoded,
+                "Region": r_encoded,
+                "Year": y
+            }])
+            pred = model.predict(X_pred)[0]
+            predictions.append(pred)
+        return predictions
+    
+    # Get year range for predictions
+    last_historical_year = df["Year"].max()
+    future_years = list(range(last_historical_year + 1, year + 1)) if year > last_historical_year else []
+    
     # Plot 1: Selected Country vs Top Emitters Over Time
     if show_top_emitters:
         with st.expander(f"📊 {country} vs Top Emitting Countries", expanded=True):
@@ -136,18 +132,40 @@ if df is not None and country:
             fig1, ax1 = plt.subplots(figsize=(12, 6))
             
             for c in comparison_countries:
+                # Historical data
                 country_data = df[df["Country"] == c].sort_values("Year")
+                c_region = country_region_map[c]
+                
                 if c == country:
+                    # Plot historical data for selected country
                     ax1.plot(country_data["Year"], country_data["Kilotons of Co2"], 
-                            marker="o", linewidth=3, label=f"{c} (Selected)", color="red")
+                            marker="o", linewidth=3, label=f"{c} (Historical)", color="red")
+                    
+                    # Plot future predictions for selected country
+                    if future_years:
+                        future_preds = predict_future(c, c_region, future_years)
+                        ax1.plot(future_years, future_preds, 
+                                marker="x", linewidth=3, linestyle="--", 
+                                label=f"{c} (Predicted)", color="darkred")
                 else:
+                    # Plot historical data for other countries
                     ax1.plot(country_data["Year"], country_data["Kilotons of Co2"], 
-                            marker="o", alpha=0.7, label=c)
+                            marker="o", alpha=0.7, label=f"{c} (Historical)")
+                    
+                    # Plot future predictions for other countries
+                    if future_years:
+                        future_preds = predict_future(c, c_region, future_years)
+                        ax1.plot(future_years, future_preds, 
+                                marker="x", alpha=0.7, linestyle="--", label=f"{c} (Predicted)")
+            
+            # Add vertical line to separate historical and predicted
+            if future_years:
+                ax1.axvline(x=last_historical_year + 0.5, color="gray", linestyle=":", alpha=0.7, label="Prediction Start")
             
             ax1.set_xlabel("Year")
             ax1.set_ylabel("Kilotons of CO2")
-            ax1.set_title(f"CO2 Emissions Over Time: {country} vs Top Emitters")
-            ax1.legend()
+            ax1.set_title(f"CO2 Emissions Over Time: {country} vs Top Emitters (with Predictions till {year})")
+            ax1.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
             ax1.grid(True, alpha=0.3)
             st.pyplot(fig1)
     
@@ -156,32 +174,73 @@ if df is not None and country:
         with st.expander(f"📈 {country} vs {region} Regional Average", expanded=True):
             fig2, ax2 = plt.subplots(figsize=(12, 6))
             
-            # Selected country data
+            # Selected country - Historical data
             country_data = df[df["Country"] == country].sort_values("Year")
             ax2.plot(country_data["Year"], country_data["Kilotons of Co2"], 
-                    marker="o", linewidth=3, label=f"{country}", color="red")
+                    marker="o", linewidth=3, label=f"{country} (Historical)", color="red")
             
-            # Regional average
+            # Selected country - Future predictions
+            if future_years:
+                future_preds = predict_future(country, region, future_years)
+                ax2.plot(future_years, future_preds, 
+                        marker="x", linewidth=3, linestyle="--", 
+                        label=f"{country} (Predicted)", color="darkred")
+            
+            # Regional average - Historical
             region_data = df[df["Region"] == region].groupby("Year")["Kilotons of Co2"].mean().reset_index()
             ax2.plot(region_data["Year"], region_data["Kilotons of Co2"], 
-                    marker="s", linewidth=2, label=f"{region} Average", color="blue", linestyle="--")
+                    marker="s", linewidth=2, label=f"{region} Average (Historical)", color="blue", linestyle="-")
+            
+            # Regional average - Future predictions (predict for all countries in region and average)
+            if future_years:
+                region_countries = [c for c, r in country_region_map.items() if r == region]
+                region_future_preds = []
+                for y in future_years:
+                    year_preds = []
+                    for c in region_countries:
+                        c_region = country_region_map[c]
+                        pred = predict_future(c, c_region, [y])[0]
+                        year_preds.append(pred)
+                    region_future_preds.append(sum(year_preds) / len(year_preds))
+                
+                ax2.plot(future_years, region_future_preds, 
+                        marker="x", linewidth=2, linestyle="--", 
+                        label=f"{region} Average (Predicted)", color="darkblue")
+            
+            # Add vertical line to separate historical and predicted
+            if future_years:
+                ax2.axvline(x=last_historical_year + 0.5, color="gray", linestyle=":", alpha=0.7, label="Prediction Start")
             
             ax2.set_xlabel("Year")
             ax2.set_ylabel("Kilotons of CO2")
-            ax2.set_title(f"{country} vs {region} Regional Average Over Time")
+            ax2.set_title(f"{country} vs {region} Regional Average Over Time (with Predictions till {year})")
             ax2.legend()
             ax2.grid(True, alpha=0.3)
             st.pyplot(fig2)
     
-    # Plot 3: Bar Chart Comparison - Latest Year
+    # Plot 3: Bar Chart Comparison - Selected Year
     if show_latest_comparison:
-        with st.expander("📉 Latest Year Comparison", expanded=True):
-            latest_year = df["Year"].max()
-            latest_data = df[df["Year"] == latest_year].groupby("Country")["Kilotons of Co2"].sum().nlargest(10)
+        with st.expander(f"📉 Top 10 Countries Comparison ({year})", expanded=True):
+            # Get historical data for latest year
+            latest_historical_year = df["Year"].max()
+            
+            if year <= latest_historical_year:
+                # Use historical data
+                year_data = df[df["Year"] == year].groupby("Country")["Kilotons of Co2"].sum().nlargest(10)
+            else:
+                # Use predictions for all countries
+                all_countries = df["Country"].unique()
+                year_preds = {}
+                for c in all_countries:
+                    c_region = country_region_map[c]
+                    pred = predict_future(c, c_region, [year])[0]
+                    year_preds[c] = pred
+                year_data = pd.Series(year_preds).nlargest(10)
             
             fig3, ax3 = plt.subplots(figsize=(10, 6))
-            colors = ["red" if c == country else "steelblue" for c in latest_data.index]
-            sns.barplot(x=latest_data.values, y=latest_data.index, palette=colors, ax=ax3)
+            colors = ["red" if c == country else "steelblue" for c in year_data.index]
+            sns.barplot(x=year_data.values, y=year_data.index, palette=colors, ax=ax3)
             ax3.set_xlabel("Kilotons of CO2")
-            ax3.set_title(f"Top 10 Countries by CO2 Emissions ({latest_year})")
+            title_type = "Historical" if year <= latest_historical_year else "Predicted"
+            ax3.set_title(f"Top 10 Countries by CO2 Emissions ({year}) - {title_type}")
             st.pyplot(fig3)
